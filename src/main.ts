@@ -6,6 +6,7 @@ import { InputManager } from './InputManager';
 import { ShotArrow } from './ShotArrow';
 import { ScoreCard } from './ScoreCard';
 import { MainMenu } from './MainMenu';
+import { MultiplayerManager, MultiMsg } from './MultiplayerManager';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Game state
@@ -69,9 +70,31 @@ const groundMat = new CANNON.Material('ground');
 const wallMat   = new CANNON.Material('wall');
 const bouncyMat = new CANNON.Material('bouncy');
 
-world.addContactMaterial(new CANNON.ContactMaterial(ballMat, groundMat, { friction: 0.55, restitution: 0.25 }));
+let ballGroundCM = new CANNON.ContactMaterial(ballMat, groundMat, { friction: 0.55, restitution: 0.25 });
+world.addContactMaterial(ballGroundCM);
 world.addContactMaterial(new CANNON.ContactMaterial(ballMat, wallMat,   { friction: 0.2,  restitution: 0.60 }));
 world.addContactMaterial(new CANNON.ContactMaterial(ballMat, bouncyMat, { friction: 0.08, restitution: 0.88 }));
+
+function applyThemePhysics(theme: string): void {
+  const idx = (world.contactmaterials as CANNON.ContactMaterial[]).indexOf(ballGroundCM);
+  if (idx > -1) (world.contactmaterials as CANNON.ContactMaterial[]).splice(idx, 1);
+  const p: Record<string, [number, number]> = { forest:[0.55,0.25], winter:[0.12,0.35], summer:[0.70,0.12] };
+  const [fr, re] = p[theme] ?? p.forest;
+  ballGroundCM = new CANNON.ContactMaterial(ballMat, groundMat, { friction: fr, restitution: re });
+  world.addContactMaterial(ballGroundCM);
+}
+
+function applyThemeScene(theme: string): void {
+  const cols: Record<string, { sky: number; fog: number; sun: number }> = {
+    forest: { sky: 0x87ceeb, fog: 0x87ceeb, sun: 0xfff5e0 },
+    winter: { sky: 0xbbd4e8, fog: 0xcce0f0, sun: 0xddeeff },
+    summer: { sky: 0x4ab4ff, fog: 0x7ac8ff, sun: 0xfff0aa },
+  };
+  const c = cols[theme] ?? cols.forest;
+  scene.background = new THREE.Color(c.sky);
+  if (scene.fog) (scene.fog as THREE.Fog).color.setHex(c.fog);
+  sun.color.setHex(c.sun);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Game objects
@@ -79,15 +102,28 @@ world.addContactMaterial(new CANNON.ContactMaterial(ballMat, bouncyMat, { fricti
 const course    = new Course(scene, world, groundMat, wallMat, bouncyMat);
 const scoreCard = new ScoreCard();
 const shotArrow = new ShotArrow(scene);
-const mainMenu  = new MainMenu(course.holes.map(h => ({
+
+let selectedTheme = 'forest';
+const mainMenu  = new MainMenu(course.getHoles('forest').map(h => ({
   number: h.number, par: h.par, description: h.description,
 })));
 
 let currentHoleIndex = 0;
-let startHoleIndex   = 0;   // where this round started (for "restart")
+let startHoleIndex   = 0;
 let ball: Ball;
 let inputManager: InputManager;
 let gameState = GameState.MENU;
+
+// ── Multiplayer state ──────────────────────────────────────────────────────
+let mpManager: MultiplayerManager | null = null;
+let mpMode = false;
+let mpMyTurn = false;
+let mpMyDone = false;
+let mpOpponentDone = false;
+let mpOpponentStrokes = 0;
+let mpOpponentHoleResults: { hole: number; par: number; strokes: number }[] = [];
+let mpFrameCount = 0;
+let ghostBallMesh: THREE.Mesh | null = null;
 
 // Camera orbit state
 let camTheta  = 0;
@@ -97,9 +133,54 @@ const camTarget     = new THREE.Vector3();
 const camTargetGoal = new THREE.Vector3();
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MP HUD elements
+// ─────────────────────────────────────────────────────────────────────────────
+const mpHudEl      = document.getElementById('mp-hud')!;
+const mpTurnBadge  = document.getElementById('mp-turn-badge')!;
+const mpOppInfoEl  = document.getElementById('mp-opp-info')!;
+
+function updateMpHud(): void {
+  if (!mpMode) { mpHudEl.style.display = 'none'; return; }
+  mpHudEl.style.display = 'flex';
+  if (mpMyDone && !mpOpponentDone) {
+    mpTurnBadge.textContent = '⏳ 상대방 대기 중';
+    mpTurnBadge.className = 'mp-turn-waiting';
+  } else if (mpMyTurn && !mpMyDone) {
+    mpTurnBadge.textContent = '🏌️ 내 차례';
+    mpTurnBadge.className = 'mp-turn-mine';
+  } else {
+    mpTurnBadge.textContent = '👀 상대방 차례';
+    mpTurnBadge.className = 'mp-turn-opp';
+  }
+  mpOppInfoEl.textContent = `상대: ${mpOpponentStrokes}타`;
+}
+
+function cleanupMp(): void {
+  mpManager?.destroy();
+  mpManager = null;
+  mpMode = false;
+  mpMyTurn = false;
+  mpMyDone = false;
+  mpOpponentDone = false;
+  mpOpponentStrokes = 0;
+  mpOpponentHoleResults = [];
+  if (ghostBallMesh) { scene.remove(ghostBallMesh); ghostBallMesh = null; }
+  updateMpHud();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main menu wiring
 // ─────────────────────────────────────────────────────────────────────────────
 mainMenu.show();
+
+mainMenu.onThemeSelected = (theme) => {
+  selectedTheme = theme;
+  applyThemePhysics(theme);
+  applyThemeScene(theme);
+  mainMenu.rebuildStageGrid(course.getHoles(theme).map(h => ({
+    number: h.number, par: h.par, description: h.description,
+  })));
+};
 
 mainMenu.onSoloStart = (idx) => {
   startHoleIndex   = idx;
@@ -109,15 +190,82 @@ mainMenu.onSoloStart = (idx) => {
   gameState = GameState.WAITING;
 };
 
+// ── Multiplayer: host creates room ─────────────────────────────────────────
+mainMenu.onMultiHost = async () => {
+  if (mpManager) { mpManager.destroy(); mpManager = null; }
+  mpManager = new MultiplayerManager();
+
+  mpManager.onConnected = () => {
+    mainMenu.showMultiHostStatus('연결됨! 게임 시작 중...');
+    setTimeout(() => {
+      mainMenu.hide();
+      mpStartGame(0);
+    }, 1000);
+  };
+  mpManager.onMessage = handleMpMsg;
+  mpManager.onDisconnected = () => {
+    if (mpMode) showMessage('⚠️ 상대방 연결이 끊겼습니다.', 4000);
+  };
+  mpManager.onError = (err) => {
+    mainMenu.showMultiJoinError('오류: ' + err);
+  };
+
+  try {
+    const code = await mpManager.createRoom();
+    mainMenu.showMultiRoomCode(code);
+  } catch {
+    mainMenu.showMultiJoinError('방 생성에 실패했습니다. 다시 시도하세요.');
+  }
+};
+
+// ── Multiplayer: guest joins room ──────────────────────────────────────────
+mainMenu.onMultiJoin = async (code: string) => {
+  if (mpManager) { mpManager.destroy(); mpManager = null; }
+  mpManager = new MultiplayerManager();
+
+  mpManager.onConnected = () => {
+    mainMenu.showMultiJoinStatus('연결됨! 호스트 대기 중...');
+  };
+  mpManager.onMessage = handleMpMsg;
+  mpManager.onDisconnected = () => {
+    if (mpMode) showMessage('⚠️ 상대방 연결이 끊겼습니다.', 4000);
+  };
+  mpManager.onError = (err) => {
+    mainMenu.showMultiJoinError('연결 오류: ' + err);
+  };
+
+  mainMenu.showMultiJoinStatus('연결 중...');
+  try {
+    await mpManager.joinRoom(code);
+  } catch {
+    mainMenu.showMultiJoinError('연결 실패. 코드를 확인하세요.');
+  }
+};
+
+mainMenu.onMultiCancel = () => {
+  mpManager?.destroy();
+  mpManager = null;
+};
+
 scoreCard.onRestart = () => {
-  currentHoleIndex = startHoleIndex;
-  scoreCard.reset();
-  initHole(startHoleIndex);
-  gameState = GameState.WAITING;
+  if (mpMode) {
+    // Can't restart a live MP game unilaterally — go to menu
+    cleanupMp();
+    scoreCard.reset();
+    gameState = GameState.MENU;
+    mainMenu.show();
+  } else {
+    currentHoleIndex = startHoleIndex;
+    scoreCard.reset();
+    initHole(startHoleIndex);
+    gameState = GameState.WAITING;
+  }
 };
 
 scoreCard.onReturnMenu = () => {
+  cleanupMp();
   scoreCard.reset();
+  scoreCard.closeScoreTab();
   gameState = GameState.MENU;
   mainMenu.show();
 };
@@ -128,17 +276,154 @@ document.getElementById('ingame-menu-btn')!.addEventListener('click', () => {
   shotArrow.hide();
   hidePowerMeter();
   if (inputManager) inputManager.canShoot = false;
+  cleanupMp();
   scoreCard.reset();
+  scoreCard.closeScoreTab();
   gameState = GameState.MENU;
   mainMenu.show();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Multiplayer game start / message handler
+// ─────────────────────────────────────────────────────────────────────────────
+function mpStartGame(holeIndex: number): void {
+  mpMode = true;
+  mpMyTurn = mpManager!.isHost;   // host always shoots first
+  mpMyDone = false;
+  mpOpponentDone = false;
+  mpOpponentStrokes = 0;
+  mpOpponentHoleResults = [];
+  mpFrameCount = 0;
+
+  // Create ghost ball (opponent's visual)
+  if (!ghostBallMesh) {
+    const geo = new THREE.SphereGeometry(0.18, 16, 16);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xff6600, transparent: true, opacity: 0.75, roughness: 0.3,
+    });
+    ghostBallMesh = new THREE.Mesh(geo, mat);
+    ghostBallMesh.castShadow = false;
+    scene.add(ghostBallMesh);
+  }
+
+  startHoleIndex = holeIndex;
+  currentHoleIndex = holeIndex;
+  scoreCard.reset();
+  initHole(holeIndex);
+  gameState = GameState.WAITING;
+
+  // Host tells guest to start
+  if (mpManager!.isHost) {
+    mpManager!.send({ type: 'game_start', holeIndex });
+  }
+  updateMpHud();
+}
+
+function handleMpMsg(msg: MultiMsg): void {
+  switch (msg.type) {
+    case 'game_start':
+      mainMenu.hide();
+      mpStartGame(msg.holeIndex);
+      mpMyTurn = false;   // guest: wait for host to shoot first
+      updateMpHud();
+      break;
+
+    case 'shot':
+      // Opponent shot — ghost ball will follow via ball_pos updates
+      break;
+
+    case 'ball_pos':
+      if (ghostBallMesh) {
+        ghostBallMesh.position.set(msg.x, msg.y, msg.z);
+        ghostBallMesh.visible = true;
+      }
+      break;
+
+    case 'turn_end':
+      mpOpponentStrokes = msg.strokes;
+      mpMyTurn = true;
+      if (inputManager) inputManager.canShoot = true;
+      updateMpHud();
+      break;
+
+    case 'hole_done':
+      mpOpponentDone = true;
+      mpOpponentStrokes = msg.strokes;
+      mpOpponentHoleResults.push({
+        hole: course.holes[currentHoleIndex].number,
+        par:  course.holes[currentHoleIndex].par,
+        strokes: msg.strokes,
+      });
+      if (ghostBallMesh) ghostBallMesh.visible = false;
+      if (mpMyDone) {
+        // Both players done — host advances
+        if (mpManager!.isHost) {
+          setTimeout(() => mpAdvanceHole(), 1500);
+        }
+      }
+      updateMpHud();
+      break;
+
+    case 'next_hole':
+      // Guest syncs to next hole
+      if (!mpManager!.isHost) {
+        setTimeout(() => {
+          messageEl.classList.remove('show');
+          mpMyDone = false;
+          mpOpponentDone = false;
+          mpOpponentStrokes = 0;
+          currentHoleIndex = msg.holeIndex;
+          mpMyTurn = false;  // host always first
+          if (currentHoleIndex < course.holes.length) {
+            initHole(currentHoleIndex);
+            gameState = GameState.WAITING;
+          } else {
+            gameState = GameState.GAME_OVER;
+            scoreCard.showFinalCard(mpOpponentHoleResults);
+          }
+          updateMpHud();
+        }, 500);
+      }
+      break;
+  }
+}
+
+function mpAdvanceHole(): void {
+  messageEl.classList.remove('show');
+  const nextIndex = currentHoleIndex + 1;
+
+  if (mpManager?.isHost) {
+    mpManager.send({ type: 'next_hole', holeIndex: nextIndex });
+  }
+
+  mpMyDone = false;
+  mpOpponentDone = false;
+  mpOpponentStrokes = 0;
+  currentHoleIndex = nextIndex;
+  mpMyTurn = !!mpManager?.isHost;  // host always shoots first
+
+  if (ghostBallMesh && currentHoleIndex < course.holes.length) {
+    const sp = course.holes[currentHoleIndex].startPosition;
+    ghostBallMesh.position.set(sp.x, sp.y, sp.z);
+    ghostBallMesh.visible = true;
+  }
+
+  if (currentHoleIndex < course.holes.length) {
+    initHole(currentHoleIndex);
+    gameState = GameState.WAITING;
+  } else {
+    gameState = GameState.GAME_OVER;
+    scoreCard.showFinalCard(mpOpponentHoleResults);
+  }
+  updateMpHud();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Init hole
 // ─────────────────────────────────────────────────────────────────────────────
 function initHole(index: number): void {
+  course.buildHole(index, selectedTheme);
   const holeData = course.holes[index];
-  course.buildHole(index);
 
   if (ball) ball.dispose();
   ball = new Ball(scene, world, holeData.startPosition, ballMat);
@@ -148,12 +433,16 @@ function initHole(index: number): void {
 
   inputManager.onShot = (input) => {
     if (gameState !== GameState.WAITING) return;
+    if (mpMode && !mpMyTurn) return;  // not my turn
     ball.shoot(input.direction, input.power);
     scoreCard.addStroke();
     shotArrow.hide();
     inputManager.canShoot = false;
     gameState = GameState.SHOOTING;
     hidePowerMeter();
+    if (mpMode) {
+      mpManager!.send({ type: 'shot', dx: input.direction.x, dz: input.direction.z, power: input.power });
+    }
   };
 
   inputManager.onCameraRotate = (dTheta, dPhi) => {
@@ -166,7 +455,17 @@ function initHole(index: number): void {
   };
 
   scoreCard.startHole(holeData.number, holeData.par);
-  inputManager.canShoot = true;
+  inputManager.canShoot = !mpMode || mpMyTurn;
+
+  // Position ghost ball at hole start for MP
+  if (mpMode && ghostBallMesh) {
+    ghostBallMesh.position.set(
+      holeData.startPosition.x,
+      holeData.startPosition.y,
+      holeData.startPosition.z,
+    );
+    ghostBallMesh.visible = true;
+  }
 
   camTheta = Math.PI;
   camTargetGoal.copy(holeData.startPosition);
@@ -174,7 +473,14 @@ function initHole(index: number): void {
   updateCamera();
 }
 
+// Wire MP opponent data for live score tab
+scoreCard.getMpOpponentData = () => {
+  if (!mpMode) return null;
+  return { strokes: mpOpponentStrokes, results: mpOpponentHoleResults };
+};
+
 // Initialise hole 0 in background so the game loop has a valid ball from the start.
+applyThemePhysics('forest');
 initHole(0);
 gameState = GameState.MENU;
 
@@ -275,6 +581,23 @@ function onHoleComplete(): void {
 
   showMessage(`⛳ 홀인!<div class="sub">${result.strokes}타 (${resultText})</div>`, 2800);
 
+  if (mpMode) {
+    mpMyDone = true;
+    mpManager!.send({ type: 'hole_done', strokes: result.strokes });
+    updateMpHud();
+
+    if (mpOpponentDone) {
+      // Both done — host drives advancement
+      if (mpManager!.isHost) setTimeout(() => mpAdvanceHole(), 3000);
+      // Guest waits for next_hole message
+    } else {
+      setTimeout(() => {
+        showMessage('⏳ 상대방 대기 중...', 60000);
+      }, 3000);
+    }
+    return;
+  }
+
   setTimeout(() => {
     currentHoleIndex++;
     if (currentHoleIndex < course.holes.length) {
@@ -339,6 +662,11 @@ function gameLoop(): void {
       break;
 
     case GameState.WAITING: {
+      if (mpMode && (!mpMyTurn || mpMyDone)) {
+        shotArrow.hide();
+        inputManager.canShoot = false;
+        break;
+      }
       inputManager.canShoot = true;
       updateShotArrow();
       break;
@@ -346,6 +674,14 @@ function gameLoop(): void {
 
     case GameState.SHOOTING: {
       shotArrow.hide();
+
+      // Broadcast ball position to opponent
+      if (mpMode) {
+        mpFrameCount++;
+        if (mpFrameCount % 3 === 0) {
+          mpManager!.send({ type: 'ball_pos', x: bp.x, y: bp.y, z: bp.z });
+        }
+      }
 
       if (!ball.isSinking) course.applySlopes(ball.body);
 
@@ -367,8 +703,15 @@ function gameLoop(): void {
 
       if (ball.isAtRest()) {
         ball.saveRestPosition();
+        if (mpMode) {
+          mpMyTurn = false;
+          mpManager!.send({ type: 'turn_end', strokes: scoreCard.getCurrentStrokes() });
+          inputManager.canShoot = false;
+          updateMpHud();
+        } else {
+          inputManager.canShoot = true;
+        }
         gameState = GameState.WAITING;
-        inputManager.canShoot = true;
       }
       break;
     }

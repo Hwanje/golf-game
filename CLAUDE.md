@@ -10,19 +10,20 @@ npm run preview  # serve dist/
 
 ## Stack
 
-Three.js · Cannon-es · TypeScript · Vite
+Three.js · Cannon-es · PeerJS · TypeScript · Vite
 
 ## Files
 
 | File | Role |
 |------|------|
 | `src/main.ts` | Scene, physics world, game loop, state machine (MENU/WAITING/SHOOTING/HOLE_IN/GAME_OVER) |
-| `src/MainMenu.ts` | Main menu overlay: Solo/Multi mode select + 9-hole stage select grid |
+| `src/MainMenu.ts` | Main menu overlay: Solo/Multi mode select, 9-hole stage select, MP room create/join panels |
+| `src/MultiplayerManager.ts` | WebRTC P2P via PeerJS: createRoom(), joinRoom(), send(), message routing |
 | `src/Course.ts` | 9 holes: split-ground physical cups, walls, slopes, rotating bars, bouncy bumpers |
 | `src/Ball.ts` | Physics body + mesh; shoot(), sinking animation, OB reset |
 | `src/InputManager.ts` | Touch (drag=aim, 2-finger=camera) and desktop (mouse/keyboard) input |
 | `src/ShotArrow.ts` | Aiming arrow + trajectory dots (depthTest=false, green→red with power) |
-| `src/ScoreCard.ts` | HUD, hole-complete messages, final scorecard modal |
+| `src/ScoreCard.ts` | HUD, live score tab (📊), hole-complete messages, final scorecard modal |
 
 ## Key Mechanics
 

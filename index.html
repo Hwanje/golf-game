@@ -140,6 +140,70 @@
       #ingame-menu-btn:hover  { background: rgba(0,0,0,0.8); transform: translateY(-1px); }
       #ingame-menu-btn:active { transform: translateY(0); }
 
+      #score-tab-btn {
+        position: absolute;
+        top: 16px; left: 106px;
+        background: rgba(0,0,0,0.6);
+        color: rgba(255,255,255,0.8);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        pointer-events: all;
+        backdrop-filter: blur(6px);
+        transition: background 0.15s, transform 0.1s;
+        letter-spacing: 0.3px;
+      }
+      #score-tab-btn:hover  { background: rgba(0,0,0,0.8); transform: translateY(-1px); }
+      #score-tab-btn:active { transform: translateY(0); }
+      #score-tab-btn.active { background: rgba(76,175,80,0.3); border-color: rgba(76,175,80,0.5); color: #7be87b; }
+
+      /* live scorecard tab panel */
+      #score-tab-panel {
+        position: absolute;
+        top: 60px; left: 16px;
+        background: rgba(10,20,10,0.94);
+        border: 1px solid rgba(100,200,100,0.25);
+        border-radius: 14px;
+        padding: 16px 20px;
+        min-width: 280px;
+        max-width: 360px;
+        display: none;
+        pointer-events: all;
+        backdrop-filter: blur(10px);
+        animation: fadeUp 0.2s ease;
+      }
+      #score-tab-panel h3 {
+        font-size: 13px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 12px;
+      }
+      #score-tab-panel table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        color: #fff;
+      }
+      #score-tab-panel th {
+        color: rgba(255,255,255,0.45);
+        font-weight: 500;
+        padding: 4px 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        text-align: center;
+      }
+      #score-tab-panel td { text-align: center; padding: 5px 6px; }
+      #score-tab-panel tr.current-hole td { color: #ffe082; font-weight: 700; }
+      #score-tab-panel .total-row td { border-top: 1px solid rgba(255,255,255,0.15); font-weight: 700; font-size: 14px; padding-top: 8px; }
+      #score-tab-panel .birdie       { color: #4CAF50; }
+      #score-tab-panel .eagle        { color: #FFD700; }
+      #score-tab-panel .bogey        { color: #FF6B6B; }
+      #score-tab-panel .double-bogey { color: #FF1744; }
+
       /* ─── Main Menu ────────────────────────────────────────────────────────── */
       #main-menu {
         position: fixed;
@@ -220,6 +284,33 @@
         letter-spacing: 0.5px;
       }
 
+      /* theme grid */
+      #theme-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        width: 100%;
+        max-width: 420px;
+        margin-bottom: 10px;
+      }
+      .theme-card {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        padding: 20px 10px;
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, transform 0.12s;
+      }
+      .theme-card:hover { transform: translateY(-3px); }
+      .theme-card:active { transform: translateY(-1px); }
+      .theme-card[data-theme="forest"]:hover { background: rgba(76,175,80,0.18);  border-color: rgba(76,175,80,0.5); }
+      .theme-card[data-theme="winter"]:hover { background: rgba(100,180,255,0.18); border-color: rgba(100,180,255,0.5); }
+      .theme-card[data-theme="summer"]:hover { background: rgba(255,200,50,0.18);  border-color: rgba(255,200,50,0.5); }
+      .tc-icon { font-size: 36px; margin-bottom: 8px; }
+      .tc-name { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+      .tc-sub  { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.5px; }
+
       /* stage grid */
       #stage-grid {
         display: grid;
@@ -249,24 +340,96 @@
       .sc-par  { font-size: 12px; color: #4CAF50; font-weight: 600; margin: 4px 0 2px; }
       .sc-desc { font-size: 10px; color: rgba(255,255,255,0.4); }
 
-      /* multi / coming soon */
-      .cs-wrap {
-        text-align: center;
-        margin-bottom: 32px;
+      /* multiplayer sub-panels */
+      .mp-sub {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        gap: 0;
       }
-      .cs-icon { font-size: 60px; margin-bottom: 16px; }
-      .cs-title { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 10px; }
-      .cs-desc  { font-size: 14px; color: rgba(255,255,255,0.55); line-height: 1.7; }
-      .cs-tag {
-        display: inline-block;
+      .mp-sub.active { display: flex; }
+      .mp-code-label {
+        font-size: 11px;
+        color: rgba(255,255,255,0.45);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 10px;
         margin-top: 16px;
-        padding: 6px 14px;
-        background: rgba(76,175,80,0.15);
-        border: 1px solid rgba(76,175,80,0.3);
-        border-radius: 20px;
-        font-size: 12px;
+      }
+      .mp-code-box {
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 1px;
         color: #4CAF50;
+        background: rgba(76,175,80,0.1);
+        border: 1px solid rgba(76,175,80,0.35);
+        border-radius: 10px;
+        padding: 12px 20px;
+        text-align: center;
+        word-break: break-all;
+        max-width: 340px;
+        width: 100%;
+        margin-bottom: 10px;
+        user-select: all;
+      }
+      .mp-code-input {
+        width: 100%;
+        max-width: 340px;
+        padding: 13px 16px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 10px;
+        color: #fff;
+        font-size: 15px;
+        font-family: 'Courier New', monospace;
         letter-spacing: 0.5px;
+        margin-bottom: 12px;
+        outline: none;
+      }
+      .mp-code-input:focus { border-color: rgba(76,175,80,0.6); }
+      .mp-code-input::placeholder { color: rgba(255,255,255,0.25); }
+      .mp-status-text {
+        font-size: 13px;
+        color: rgba(255,255,255,0.55);
+        margin: 8px 0;
+        text-align: center;
+      }
+      .mp-error-text {
+        font-size: 13px;
+        color: #FF6B6B;
+        margin: 8px 0;
+        text-align: center;
+      }
+      /* in-game mp hud */
+      #mp-hud {
+        position: absolute;
+        top: 16px; right: 16px;
+        display: none;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        pointer-events: none;
+      }
+      #mp-turn-badge {
+        padding: 7px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 700;
+        backdrop-filter: blur(6px);
+        border: 1px solid transparent;
+      }
+      #mp-turn-badge.mp-turn-mine    { background: rgba(76,175,80,0.25);  border-color: rgba(76,175,80,0.5);  color: #7be87b; }
+      #mp-turn-badge.mp-turn-opp     { background: rgba(0,0,0,0.45);       border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
+      #mp-turn-badge.mp-turn-waiting { background: rgba(255,180,0,0.18);  border-color: rgba(255,180,0,0.4);  color: #ffd55e; }
+      #mp-opp-info {
+        font-size: 12px;
+        color: rgba(255,255,255,0.55);
+        background: rgba(0,0,0,0.4);
+        padding: 4px 10px;
+        border-radius: 12px;
+        backdrop-filter: blur(4px);
       }
 
       /* decorative golf ball dots (background) */
@@ -305,7 +468,31 @@
         <button id="btn-multi" class="m-btn ghost">멀티플레이</button>
       </div>
 
-      <!-- Panel 1: stage select -->
+      <!-- Panel 1: theme select -->
+      <div id="theme-panel" class="menu-panel">
+        <div class="panel-h">테마 선택</div>
+        <div class="panel-sub">코스 환경을 선택하세요</div>
+        <div id="theme-grid">
+          <div class="theme-card" data-theme="forest">
+            <div class="tc-icon">🌲</div>
+            <div class="tc-name">숲</div>
+            <div class="tc-sub">기본 코스</div>
+          </div>
+          <div class="theme-card" data-theme="winter">
+            <div class="tc-icon">❄️</div>
+            <div class="tc-name">겨울</div>
+            <div class="tc-sub">빙판 물리</div>
+          </div>
+          <div class="theme-card" data-theme="summer">
+            <div class="tc-icon">☀️</div>
+            <div class="tc-name">여름</div>
+            <div class="tc-sub">모래 물리</div>
+          </div>
+        </div>
+        <button id="btn-back-theme" class="m-btn back">← 뒤로</button>
+      </div>
+
+      <!-- Panel 2: stage select -->
       <div id="stage-select" class="menu-panel">
         <div class="panel-h">스테이지 선택</div>
         <div class="panel-sub">시작할 홀을 선택하세요 — 해당 홀부터 플레이합니다</div>
@@ -313,18 +500,36 @@
         <button id="btn-back-solo" class="m-btn back">← 뒤로</button>
       </div>
 
-      <!-- Panel 2: multi (coming soon) -->
+      <!-- Panel 2: multi -->
       <div id="multi-panel" class="menu-panel">
-        <div class="cs-wrap">
-          <div class="cs-icon">🚧</div>
-          <div class="cs-title">멀티플레이</div>
-          <div class="cs-desc">
-            WebRTC 기반 P2P 멀티플레이<br>
-            초대 코드로 친구와 함께 플레이
-          </div>
-          <div class="cs-tag">Phase 2 — 개발 예정</div>
+        <div class="panel-h">멀티플레이</div>
+        <div class="panel-sub">WebRTC P2P · 초대 코드로 1:1 대전</div>
+
+        <!-- sub: choice -->
+        <div id="mp-sub-choice" class="mp-sub active">
+          <button id="btn-create-room" class="m-btn green">방 만들기 (호스트)</button>
+          <button id="btn-show-join"   class="m-btn ghost">방 참가하기</button>
+          <button id="btn-back-multi"  class="m-btn back">← 뒤로</button>
         </div>
-        <button id="btn-back-multi" class="m-btn back">← 뒤로</button>
+
+        <!-- sub: host waiting for guest -->
+        <div id="mp-sub-host" class="mp-sub">
+          <div class="mp-code-label">초대 코드 — 친구에게 공유하세요</div>
+          <div id="mp-room-code" class="mp-code-box">···</div>
+          <button id="btn-copy-code" class="m-btn ghost" style="max-width:200px;padding:10px">📋 코드 복사</button>
+          <p id="mp-host-status" class="mp-status-text">상대방 대기 중...</p>
+          <button id="btn-cancel-host" class="m-btn back">취소</button>
+        </div>
+
+        <!-- sub: join (enter code) -->
+        <div id="mp-sub-join" class="mp-sub">
+          <div class="mp-code-label">초대 코드 입력</div>
+          <input id="mp-join-code" class="mp-code-input" placeholder="코드를 붙여넣으세요" autocomplete="off" spellcheck="false" />
+          <button id="btn-do-join" class="m-btn green">참가하기</button>
+          <p id="mp-join-status" class="mp-status-text" style="display:none">연결 중...</p>
+          <p id="mp-join-error"  class="mp-error-text"  style="display:none">연결 실패. 코드를 확인하세요.</p>
+          <button id="btn-back-join" class="m-btn back">← 뒤로</button>
+        </div>
       </div>
 
     </div>
@@ -332,6 +537,18 @@
     <!-- ── Game UI ────────────────────────────────────────────────────────────── -->
     <div id="ui-overlay">
       <button id="ingame-menu-btn">☰ 메뉴</button>
+      <button id="score-tab-btn">📊 스코어</button>
+      <div id="score-tab-panel">
+        <h3>현재 스코어</h3>
+        <table>
+          <thead><tr id="score-tab-head"></tr></thead>
+          <tbody id="score-tab-body"></tbody>
+        </table>
+      </div>
+      <div id="mp-hud">
+        <div id="mp-turn-badge" class="mp-turn-mine">내 차례</div>
+        <div id="mp-opp-info">상대: 0타</div>
+      </div>
       <div id="hud">
         <div class="hole-label">HOLE</div>
         <div class="hole-info"   id="hole-info">1 / 9 &nbsp;|&nbsp; Par 3</div>

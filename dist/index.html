@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>3D 미니골프</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { overflow: hidden; background: #000; font-family: 'Segoe UI', Arial, sans-serif; }
+      canvas { display: block; touch-action: none; }
+
+      /* ─── Game HUD overlay ─────────────────────────────────────────────────── */
+      #ui-overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      #hud {
+        position: absolute;
+        top: 16px; left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.65);
+        color: #fff;
+        border-radius: 12px;
+        padding: 10px 24px;
+        text-align: center;
+        backdrop-filter: blur(6px);
+        border: 1px solid rgba(255,255,255,0.15);
+        min-width: 220px;
+      }
+      #hud .hole-label { font-size: 11px; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px; }
+      #hud .hole-info  { font-size: 22px; font-weight: 700; margin: 2px 0; }
+      #hud .stroke-info{ font-size: 14px; opacity: 0.9; }
+
+      #hint {
+        position: absolute;
+        bottom: 24px; left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.55);
+        color: rgba(255,255,255,0.85);
+        border-radius: 20px;
+        padding: 8px 20px;
+        font-size: 13px;
+        backdrop-filter: blur(4px);
+        transition: opacity 0.5s;
+      }
+
+      #message {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%) scale(0.5);
+        background: rgba(0,0,0,0.85);
+        color: #FFD700;
+        font-size: 42px;
+        font-weight: 900;
+        padding: 20px 48px;
+        border-radius: 16px;
+        text-align: center;
+        opacity: 0;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        pointer-events: none;
+        border: 2px solid rgba(255,215,0,0.4);
+      }
+      #message.show {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      #message .sub { font-size: 18px; color: #fff; opacity: 0.8; margin-top: 6px; }
+
+      #scorecard-modal {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(10,20,10,0.97);
+        color: #fff;
+        border-radius: 16px;
+        padding: 28px 36px;
+        min-width: 320px;
+        display: none;
+        border: 2px solid rgba(100,200,100,0.3);
+        pointer-events: all;
+      }
+      #scorecard-modal h2 { text-align: center; color: #4CAF50; margin-bottom: 16px; font-size: 24px; }
+      #scorecard-modal table { width: 100%; border-collapse: collapse; font-size: 15px; }
+      #scorecard-modal th { color: rgba(255,255,255,0.6); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+      #scorecard-modal td { text-align: center; padding: 8px; }
+      #scorecard-modal tr:last-child td { border-top: 1px solid rgba(255,255,255,0.2); font-weight: 700; font-size: 17px; }
+      #scorecard-modal .birdie      { color: #4CAF50; }
+      #scorecard-modal .eagle       { color: #FFD700; }
+      #scorecard-modal .bogey       { color: #FF6B6B; }
+      #scorecard-modal .double-bogey{ color: #FF1744; }
+      .sc-btn-row { display: flex; gap: 10px; margin-top: 20px; }
+      .sc-btn-row button {
+        flex: 1; padding: 12px; border: none; border-radius: 8px;
+        font-size: 15px; cursor: pointer; pointer-events: all; font-weight: 600;
+      }
+      #restart-btn   { background: #4CAF50; color: #fff; }
+      #restart-btn:hover { background: #43A047; }
+      #menu-btn      { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.2) !important; }
+      #menu-btn:hover{ background: rgba(255,255,255,0.2); }
+
+      #power-meter {
+        position: absolute;
+        bottom: 70px; left: 50%;
+        transform: translateX(-50%);
+        width: 200px; height: 12px;
+        background: rgba(0,0,0,0.5);
+        border-radius: 6px;
+        overflow: hidden;
+        display: none;
+        border: 1px solid rgba(255,255,255,0.3);
+      }
+      #power-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #4CAF50, #FFEB3B, #FF5722);
+        border-radius: 6px;
+        transition: width 0.05s;
+      }
+
+      #ingame-menu-btn {
+        position: absolute;
+        top: 16px; left: 16px;
+        background: rgba(0,0,0,0.6);
+        color: rgba(255,255,255,0.8);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        pointer-events: all;
+        backdrop-filter: blur(6px);
+        transition: background 0.15s, transform 0.1s;
+        letter-spacing: 0.3px;
+      }
+      #ingame-menu-btn:hover  { background: rgba(0,0,0,0.8); transform: translateY(-1px); }
+      #ingame-menu-btn:active { transform: translateY(0); }
+
+      #score-tab-btn {
+        position: absolute;
+        top: 16px; left: 106px;
+        background: rgba(0,0,0,0.6);
+        color: rgba(255,255,255,0.8);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        pointer-events: all;
+        backdrop-filter: blur(6px);
+        transition: background 0.15s, transform 0.1s;
+        letter-spacing: 0.3px;
+      }
+      #score-tab-btn:hover  { background: rgba(0,0,0,0.8); transform: translateY(-1px); }
+      #score-tab-btn:active { transform: translateY(0); }
+      #score-tab-btn.active { background: rgba(76,175,80,0.3); border-color: rgba(76,175,80,0.5); color: #7be87b; }
+
+      /* live scorecard tab panel */
+      #score-tab-panel {
+        position: absolute;
+        top: 60px; left: 16px;
+        background: rgba(10,20,10,0.94);
+        border: 1px solid rgba(100,200,100,0.25);
+        border-radius: 14px;
+        padding: 16px 20px;
+        min-width: 280px;
+        max-width: 360px;
+        display: none;
+        pointer-events: all;
+        backdrop-filter: blur(10px);
+        animation: fadeUp 0.2s ease;
+      }
+      #score-tab-panel h3 {
+        font-size: 13px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 12px;
+      }
+      #score-tab-panel table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        color: #fff;
+      }
+      #score-tab-panel th {
+        color: rgba(255,255,255,0.45);
+        font-weight: 500;
+        padding: 4px 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        text-align: center;
+      }
+      #score-tab-panel td { text-align: center; padding: 5px 6px; }
+      #score-tab-panel tr.current-hole td { color: #ffe082; font-weight: 700; }
+      #score-tab-panel .total-row td { border-top: 1px solid rgba(255,255,255,0.15); font-weight: 700; font-size: 14px; padding-top: 8px; }
+      #score-tab-panel .birdie       { color: #4CAF50; }
+      #score-tab-panel .eagle        { color: #FFD700; }
+      #score-tab-panel .bogey        { color: #FF6B6B; }
+      #score-tab-panel .double-bogey { color: #FF1744; }
+
+      /* ─── Main Menu ────────────────────────────────────────────────────────── */
+      #main-menu {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(160deg, #071207 0%, #0c2410 50%, #071a0d 100%);
+        z-index: 50;
+      }
+
+      /* shared panel wrapper */
+      .menu-panel {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 520px;
+        padding: 40px 24px;
+        animation: fadeUp 0.25s ease;
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* title */
+      .menu-logo {
+        font-size: 56px;
+        font-weight: 900;
+        color: #fff;
+        text-shadow: 0 0 50px rgba(76,200,80,0.55);
+        letter-spacing: -1.5px;
+        margin-bottom: 6px;
+      }
+      .menu-logo span { color: #4CAF50; }
+      .menu-tagline {
+        font-size: 13px;
+        color: rgba(255,255,255,0.35);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 52px;
+      }
+
+      /* buttons */
+      .m-btn {
+        display: block;
+        width: 100%;
+        max-width: 300px;
+        padding: 17px 32px;
+        border: none;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.12s, box-shadow 0.12s, background 0.15s;
+        margin-bottom: 14px;
+        letter-spacing: 0.3px;
+      }
+      .m-btn:hover  { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.5); }
+      .m-btn:active { transform: translateY(-1px); }
+      .m-btn.green  { background: linear-gradient(135deg, #43A047, #2e7d32); color: #fff; }
+      .m-btn.ghost  { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.18); }
+      .m-btn.back   { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.5); font-size: 14px; max-width: 180px; margin-top: 12px; border: 1px solid rgba(255,255,255,0.1); }
+
+      /* panel heading */
+      .panel-h {
+        font-size: 20px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.9);
+        margin-bottom: 20px;
+        letter-spacing: 0.5px;
+      }
+      .panel-sub {
+        font-size: 12px;
+        color: rgba(255,255,255,0.35);
+        margin-bottom: 24px;
+        letter-spacing: 0.5px;
+      }
+
+      /* theme grid */
+      #theme-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        width: 100%;
+        max-width: 420px;
+        margin-bottom: 10px;
+      }
+      .theme-card {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        padding: 20px 10px;
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, transform 0.12s;
+      }
+      .theme-card:hover { transform: translateY(-3px); }
+      .theme-card:active { transform: translateY(-1px); }
+      .theme-card[data-theme="forest"]:hover { background: rgba(76,175,80,0.18);  border-color: rgba(76,175,80,0.5); }
+      .theme-card[data-theme="winter"]:hover { background: rgba(100,180,255,0.18); border-color: rgba(100,180,255,0.5); }
+      .theme-card[data-theme="summer"]:hover { background: rgba(255,200,50,0.18);  border-color: rgba(255,200,50,0.5); }
+      .tc-icon { font-size: 36px; margin-bottom: 8px; }
+      .tc-name { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+      .tc-sub  { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.5px; }
+
+      /* stage grid */
+      #stage-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        width: 100%;
+        max-width: 480px;
+      }
+      .stage-card {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 16px 8px;
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, transform 0.12s;
+        position: relative;
+      }
+      .stage-card:hover {
+        background: rgba(76,175,80,0.18);
+        border-color: rgba(76,175,80,0.45);
+        transform: translateY(-3px);
+      }
+      .stage-card:active { transform: translateY(-1px); }
+      .sc-hole { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+      .sc-num  { font-size: 28px; font-weight: 900; color: #fff; line-height: 1; }
+      .sc-par  { font-size: 12px; color: #4CAF50; font-weight: 600; margin: 4px 0 2px; }
+      .sc-desc { font-size: 10px; color: rgba(255,255,255,0.4); }
+
+      /* multiplayer sub-panels */
+      .mp-sub {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        gap: 0;
+      }
+      .mp-sub.active { display: flex; }
+      .mp-code-label {
+        font-size: 11px;
+        color: rgba(255,255,255,0.45);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        margin-top: 16px;
+      }
+      .mp-code-box {
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #4CAF50;
+        background: rgba(76,175,80,0.1);
+        border: 1px solid rgba(76,175,80,0.35);
+        border-radius: 10px;
+        padding: 12px 20px;
+        text-align: center;
+        word-break: break-all;
+        max-width: 340px;
+        width: 100%;
+        margin-bottom: 10px;
+        user-select: all;
+      }
+      .mp-code-input {
+        width: 100%;
+        max-width: 340px;
+        padding: 13px 16px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 10px;
+        color: #fff;
+        font-size: 15px;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+        outline: none;
+      }
+      .mp-code-input:focus { border-color: rgba(76,175,80,0.6); }
+      .mp-code-input::placeholder { color: rgba(255,255,255,0.25); }
+      .mp-status-text {
+        font-size: 13px;
+        color: rgba(255,255,255,0.55);
+        margin: 8px 0;
+        text-align: center;
+      }
+      .mp-error-text {
+        font-size: 13px;
+        color: #FF6B6B;
+        margin: 8px 0;
+        text-align: center;
+      }
+      /* in-game mp hud */
+      #mp-hud {
+        position: absolute;
+        top: 16px; right: 16px;
+        display: none;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        pointer-events: none;
+      }
+      #mp-turn-badge {
+        padding: 7px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 700;
+        backdrop-filter: blur(6px);
+        border: 1px solid transparent;
+      }
+      #mp-turn-badge.mp-turn-mine    { background: rgba(76,175,80,0.25);  border-color: rgba(76,175,80,0.5);  color: #7be87b; }
+      #mp-turn-badge.mp-turn-opp     { background: rgba(0,0,0,0.45);       border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }
+      #mp-turn-badge.mp-turn-waiting { background: rgba(255,180,0,0.18);  border-color: rgba(255,180,0,0.4);  color: #ffd55e; }
+      #mp-opp-info {
+        font-size: 12px;
+        color: rgba(255,255,255,0.55);
+        background: rgba(0,0,0,0.4);
+        padding: 4px 10px;
+        border-radius: 12px;
+        backdrop-filter: blur(4px);
+      }
+
+      /* decorative golf ball dots (background) */
+      .bg-balls {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 49;
+      }
+      .bg-ball {
+        position: absolute;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.08), rgba(255,255,255,0.01));
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-DjsjKMC4.js"></script>
+  </head>
+  <body>
+
+    <!-- decorative background circles -->
+    <div class="bg-balls">
+      <div class="bg-ball" style="width:300px;height:300px;top:-80px;left:-60px;"></div>
+      <div class="bg-ball" style="width:200px;height:200px;bottom:40px;right:-40px;"></div>
+      <div class="bg-ball" style="width:140px;height:140px;top:55%;left:70%;"></div>
+    </div>
+
+    <!-- ── Main Menu ─────────────────────────────────────────────────────────── -->
+    <div id="main-menu">
+
+      <!-- Panel 0: title + mode select -->
+      <div id="menu-main" class="menu-panel">
+        <div class="menu-logo">⛳ MINI<span>GOLF</span></div>
+        <div class="menu-tagline">3D Physics Edition</div>
+        <button id="btn-solo"  class="m-btn green">솔로 플레이</button>
+        <button id="btn-multi" class="m-btn ghost">멀티플레이</button>
+      </div>
+
+      <!-- Panel 1: theme select -->
+      <div id="theme-panel" class="menu-panel">
+        <div class="panel-h">테마 선택</div>
+        <div class="panel-sub">코스 환경을 선택하세요</div>
+        <div id="theme-grid">
+          <div class="theme-card" data-theme="forest">
+            <div class="tc-icon">🌲</div>
+            <div class="tc-name">숲</div>
+            <div class="tc-sub">기본 코스</div>
+          </div>
+          <div class="theme-card" data-theme="winter">
+            <div class="tc-icon">❄️</div>
+            <div class="tc-name">겨울</div>
+            <div class="tc-sub">빙판 물리</div>
+          </div>
+          <div class="theme-card" data-theme="summer">
+            <div class="tc-icon">☀️</div>
+            <div class="tc-name">여름</div>
+            <div class="tc-sub">모래 물리</div>
+          </div>
+        </div>
+        <button id="btn-back-theme" class="m-btn back">← 뒤로</button>
+      </div>
+
+      <!-- Panel 2: stage select -->
+      <div id="stage-select" class="menu-panel">
+        <div class="panel-h">스테이지 선택</div>
+        <div class="panel-sub">시작할 홀을 선택하세요 — 해당 홀부터 플레이합니다</div>
+        <div id="stage-grid"></div>
+        <button id="btn-back-solo" class="m-btn back">← 뒤로</button>
+      </div>
+
+      <!-- Panel 2: multi -->
+      <div id="multi-panel" class="menu-panel">
+        <div class="panel-h">멀티플레이</div>
+        <div class="panel-sub">WebRTC P2P · 초대 코드로 1:1 대전</div>
+
+        <!-- sub: choice -->
+        <div id="mp-sub-choice" class="mp-sub active">
+          <button id="btn-create-room" class="m-btn green">방 만들기 (호스트)</button>
+          <button id="btn-show-join"   class="m-btn ghost">방 참가하기</button>
+          <button id="btn-back-multi"  class="m-btn back">← 뒤로</button>
+        </div>
+
+        <!-- sub: host waiting for guest -->
+        <div id="mp-sub-host" class="mp-sub">
+          <div class="mp-code-label">초대 코드 — 친구에게 공유하세요</div>
+          <div id="mp-room-code" class="mp-code-box">···</div>
+          <button id="btn-copy-code" class="m-btn ghost" style="max-width:200px;padding:10px">📋 코드 복사</button>
+          <p id="mp-host-status" class="mp-status-text">상대방 대기 중...</p>
+          <button id="btn-cancel-host" class="m-btn back">취소</button>
+        </div>
+
+        <!-- sub: join (enter code) -->
+        <div id="mp-sub-join" class="mp-sub">
+          <div class="mp-code-label">초대 코드 입력</div>
+          <input id="mp-join-code" class="mp-code-input" placeholder="코드를 붙여넣으세요" autocomplete="off" spellcheck="false" />
+          <button id="btn-do-join" class="m-btn green">참가하기</button>
+          <p id="mp-join-status" class="mp-status-text" style="display:none">연결 중...</p>
+          <p id="mp-join-error"  class="mp-error-text"  style="display:none">연결 실패. 코드를 확인하세요.</p>
+          <button id="btn-back-join" class="m-btn back">← 뒤로</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Game UI ────────────────────────────────────────────────────────────── -->
+    <div id="ui-overlay">
+      <button id="ingame-menu-btn">☰ 메뉴</button>
+      <button id="score-tab-btn">📊 스코어</button>
+      <div id="score-tab-panel">
+        <h3>현재 스코어</h3>
+        <table>
+          <thead><tr id="score-tab-head"></tr></thead>
+          <tbody id="score-tab-body"></tbody>
+        </table>
+      </div>
+      <div id="mp-hud">
+        <div id="mp-turn-badge" class="mp-turn-mine">내 차례</div>
+        <div id="mp-opp-info">상대: 0타</div>
+      </div>
+      <div id="hud">
+        <div class="hole-label">HOLE</div>
+        <div class="hole-info"   id="hole-info">1 / 9 &nbsp;|&nbsp; Par 3</div>
+        <div class="stroke-info" id="stroke-info">타수: 0</div>
+      </div>
+      <div id="hint">드래그하여 방향/파워 조절</div>
+      <div id="power-meter"><div id="power-bar"></div></div>
+      <div id="message"></div>
+      <div id="scorecard-modal">
+        <h2>⛳ 최종 스코어카드</h2>
+        <table>
+          <thead>
+            <tr><th>홀</th><th>파</th><th>타수</th><th>결과</th></tr>
+          </thead>
+          <tbody id="scorecard-body"></tbody>
+        </table>
+        <div class="sc-btn-row">
+          <button id="restart-btn">다시 시작</button>
+          <button id="menu-btn">메인 메뉴</button>
+        </div>
+      </div>
+    </div>
+
+  </body>
+</html>

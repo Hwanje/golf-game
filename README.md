@@ -167,7 +167,7 @@ MENU → WAITING → SHOOTING → HOLE_IN → (다음 홀 or GAME_OVER)
 ## 로드맵
 
 - [x] Phase 1 — 솔로 플레이 (9홀, 물리 엔진, 스코어카드)
-- [ ] Phase 2 — 멀티플레이 (WebRTC P2P, 초대 코드, 실시간 대전)
+- [x] Phase 2 — 멀티플레이 (WebRTC P2P, 초대 코드, 턴제 1:1 대전)
 - [ ] Phase 3 — 코스 에디터, 리더보드
 
 ---
