@@ -432,6 +432,67 @@
         backdrop-filter: blur(4px);
       }
 
+      /* ─── MP Roulette Overlay ─────────────────────────────────────────────── */
+      #mp-roulette {
+        position: fixed;
+        inset: 0;
+        background: rgba(4, 14, 4, 0.96);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 60;
+        flex-direction: column;
+        gap: 0;
+      }
+      #mp-roulette .rl-title {
+        font-size: 14px;
+        color: rgba(255,255,255,0.4);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 32px;
+      }
+      #mp-roulette .rl-slots {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 16px;
+      }
+      #mp-roulette .rl-slot {
+        background: rgba(255,255,255,0.06);
+        border: 2px solid rgba(76,175,80,0.3);
+        border-radius: 16px;
+        padding: 24px 32px;
+        text-align: center;
+        min-width: 140px;
+        transition: border-color 0.3s;
+      }
+      #mp-roulette .rl-slot.settled {
+        border-color: rgba(76,175,80,0.9);
+        box-shadow: 0 0 30px rgba(76,175,80,0.3);
+      }
+      #mp-roulette .rl-val {
+        font-size: 36px;
+        font-weight: 900;
+        color: #fff;
+        display: block;
+        margin-bottom: 4px;
+        min-height: 48px;
+      }
+      #mp-roulette .rl-lbl {
+        font-size: 11px;
+        color: rgba(255,255,255,0.35);
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      #mp-roulette .rl-result {
+        font-size: 13px;
+        color: #4CAF50;
+        letter-spacing: 1px;
+        margin-top: 24px;
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      #mp-roulette .rl-result.show { opacity: 1; }
+
       /* decorative golf ball dots (background) */
       .bg-balls {
         position: fixed;
@@ -455,6 +516,22 @@
       <div class="bg-ball" style="width:300px;height:300px;top:-80px;left:-60px;"></div>
       <div class="bg-ball" style="width:200px;height:200px;bottom:40px;right:-40px;"></div>
       <div class="bg-ball" style="width:140px;height:140px;top:55%;left:70%;"></div>
+    </div>
+
+    <!-- ── MP Roulette ──────────────────────────────────────────────────────── -->
+    <div id="mp-roulette">
+      <div class="rl-title" id="rl-title">맵 추첨 중...</div>
+      <div class="rl-slots">
+        <div class="rl-slot" id="rl-slot-theme">
+          <span class="rl-val" id="rl-theme-val">🌲</span>
+          <span class="rl-lbl">테마</span>
+        </div>
+        <div class="rl-slot" id="rl-slot-hole">
+          <span class="rl-val" id="rl-hole-val">1</span>
+          <span class="rl-lbl">홀</span>
+        </div>
+      </div>
+      <div class="rl-result" id="rl-result">게임 시작!</div>
     </div>
 
     <!-- ── Main Menu ─────────────────────────────────────────────────────────── -->

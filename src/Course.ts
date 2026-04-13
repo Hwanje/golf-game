@@ -12,6 +12,7 @@ export interface HoleData {
 
 interface SlopeZone { minX: number; maxX: number; minZ: number; maxZ: number; fx: number; fz: number; }
 interface RotatingBody { body: CANNON.Body; mesh: THREE.Object3D; }
+interface BumperEntry  { body: CANNON.Body; mesh: THREE.Mesh; timer: number; active: boolean; }
 interface ThemeColors {
   rough: number; fairwayA: number; fairwayB: number;
   wall: number; wallCap: number; obs: number;
@@ -54,9 +55,9 @@ export class Course {
   public readonly CUP_DETECT_Y = -0.12;
 
   private _allHoles: Record<string, HoleData[]> = {
-    forest: makeHoles(['언덕 직선','경사+범퍼','좁은 통로','경사 도전','회전 장애물','핀볼 코스','이중 회전','S자 코스','최종 도전']),
-    winter: makeHoles(['빙판 직선','빙판+벽','좁은 빙판','이중 경사','회전+경사','얼음 핀볼','이중 회전','S자 빙판','최종 경사']),
-    summer: makeHoles(['해변 직선','야자수 코스','좁은 해변','모래 언덕','회전+언덕','산호 핀볼','이중 회전','S자 해변','최종 언덕']),
+    forest: makeHoles(['쌍둥이 언덕','S자 게이트','좁은 언덕','풍차 파스','이중 풍차','핀볼 숲','요새 통과','지그재그','최후의 관문']),
+    winter: makeHoles(['블랙 아이스','얼음 게이트','빙판 골목','빙하 계단','설원 풍차','얼음 삼각대','이중 빙판 풍차','얼음 슬라롬','얼음 미끄럼틀']),
+    summer: makeHoles(['해변 오프닝','야자나무 게이트','모래 함정','사구 달리기','해변 풍차','산호 핀볼','여름 요새','모래 슬라롬','최후의 사구']),
   };
 
   private currentTheme = 'forest';
@@ -64,6 +65,7 @@ export class Course {
   private bodies: CANNON.Body[] = [];
   private slopeZones: SlopeZone[] = [];
   private rotatingBodies: RotatingBody[] = [];
+  private bumperEntries: BumperEntry[] = [];
   private flagGroup: THREE.Group;
   private flagMesh: THREE.Mesh | null = null;
   private flagAnimAngle = 0;
@@ -104,65 +106,67 @@ export class Course {
 
   private _forest(i: number): void {
     switch (i) {
-      case 0: { // Par 2 – straight + hill + bump ramp
-        const {W,D,hp} = this.enc(0);
-        this.addHill(0, 0, 1.8, 0.35);
-        this.addBumpRamp(1.5, 3.0, 2.5, 1.5, 0.30);
-        void W; void D; void hp;
+      case 0: { // Par 2 – 쌍둥이 언덕 (channel shot between two hills)
+        const {W,D,hp} = this.enc(0); void W; void D; void hp;
+        this.addHill(-1.8,  2.0, 1.3, 0.38);
+        this.addHill( 1.8,  2.0, 1.3, 0.38);
+        this.addBumpRamp(0, -3.5, 1.8, 2.5, 0.22);
         break; }
-      case 1: { // Par 3 – slope zones + bumper
+      case 1: { // Par 3 – S자 게이트 (offset obstacles force S-curve)
         const {W,D,hp} = this.enc(1); void W; void D; void hp;
-        this.addObs(-1, 0, 5, 1.2, 0.8, this.tc.obs);
-        this.addSlopeZone(-3.5,-2, 0,-4, -1.1, 0); this.addSlopeVisual(-3.5,-2, 0,-4, -1,0, 0x7aaa60);
-        this.addSlopeZone( 0,-5, 3.5,-6.5, 1.1, 0); this.addSlopeVisual( 0,-5, 3.5,-6.5,  1,0, 0x6aaa70);
+        this.addObs(-2.0,  3.5, 3.5, 1.4, 0.9, this.tc.obs);
+        this.addObs( 2.0, -1.5, 3.5, 1.4, 0.9, this.tc.obs);
+        this.addSlopeZone(-3.5,-6.5, 3.5,-4.5, 0.8, 0);
+        this.addSlopeVisual(-3.5,-6.5, 3.5,-4.5, 1, 0, 0x6aaa60);
         break; }
-      case 2: { // Par 2 – narrow + off-centre hill
+      case 2: { // Par 2 – 좁은 언덕 (narrow fairway, off-centre hill)
         const {W,D,hp} = this.enc(2); void W; void D; void hp;
-        this.addHill(0.5, -0.5, 1.4, 0.40);
+        this.addHill(-0.5, 0.0, 1.3, 0.48);
         break; }
-      case 3: { // Par 3 – slope zones + entry ramp
+      case 3: { // Par 3 – 풍차 파스 (ramp + rotating bar mid-course)
         const {W,D,hp} = this.enc(3); void W; void D; void hp;
-        this.addBumpRamp(0, 5.5, 3.5, 1.2, 0.32);
-        this.addSlopeZone( 0,-0.5,  4, 2,   1.0, 0); this.addSlopeVisual(0,-0.5,4,2, 1,0,0x9ab86e);
-        this.addSlopeZone(-4,-5,    0,-2,  -1.0, 0); this.addSlopeVisual(-4,-5,0,-2,-1,0,0x8aaa6e);
+        this.addBumpRamp(0, 5.0, 3.0, 3.5, 0.35);
+        this.addRotatingBar(0, -1.0, 7.5, 0.70, this.tc.barA);
+        this.addHill( 2.5, -5.5, 1.4, 0.28);
+        this.addHill(-2.5, -5.5, 1.4, 0.28);
         break; }
-      case 4: { // Par 4 – rotating bar + hill + bump ramp
+      case 4: { // Par 4 – 이중 풍차 (two counter-rotating bars + entry ramp)
         const {W,D,hp} = this.enc(4); void W; void D; void hp;
-        this.addBumpRamp(0, 4.5, 2.5, 1.3, 0.40);
-        this.addRotatingBar(0, 0, 7.0, 0.65, this.tc.barA);
-        this.addHill(-1.5, 5, 1.6, 0.32);
+        this.addBumpRamp(0, 7.0, 2.5, 4.0, 0.42);
+        this.addRotatingBar(0,  2.5, 8.5,  0.72, this.tc.barA);
+        this.addRotatingBar(0, -3.5, 8.5, -0.50, this.tc.barB);
+        this.addHill(-2.0, -7.5, 1.5, 0.30);
+        this.addHill( 2.0, -7.5, 1.5, 0.30);
         break; }
-      case 5: { // Par 3 – pinball bumpers + hills
+      case 5: { // Par 3 – 핀볼 숲 (entry hills funnel into bumper triangle)
         const {W,D,hp} = this.enc(5); void W; void D; void hp;
-        this.addBouncyCylinder( 0,  3, 0.55, 1.1);
-        this.addBouncyCylinder(-2, -1, 0.55, 1.1);
-        this.addBouncyCylinder( 2, -1, 0.55, 1.1);
-        this.addHill( 2.5, 5.5, 1.3, 0.30);
-        this.addHill(-2.5, 5.5, 1.3, 0.30);
+        this.addHill(-3.0, 6.5, 1.8, 0.35);
+        this.addHill( 3.0, 6.5, 1.8, 0.35);
+        this.addBouncyCylinder( 0.0,  1.5, 0.60, 1.2);
+        this.addBouncyCylinder(-2.2, -2.5, 0.60, 1.2);
+        this.addBouncyCylinder( 2.2, -2.5, 0.60, 1.2);
         break; }
-      case 6: { // Par 4 – two rotating bars + hill + entry ramp
+      case 6: { // Par 4 – 요새 통과 (ramp + two bars + side obstacle)
         const {W,D,hp} = this.enc(6); void W; void D; void hp;
-        this.addBumpRamp(0, 8.0, 2.5, 1.4, 0.38);
-        this.addRotatingBar(0,  4, 8.0,  0.60, this.tc.barA);
-        this.addRotatingBar(0, -3, 8.0, -0.45, this.tc.barB);
-        this.addHill(0, 8, 1.8, 0.34);
+        this.addBumpRamp(0, 7.5, 3.0, 4.5, 0.45);
+        this.addRotatingBar(0,  2.5, 9.0,  0.65, this.tc.barA);
+        this.addObs(-2.5, -2.0, 4.0, 1.4, 0.9, this.tc.obs);
+        this.addRotatingBar(0, -5.5, 9.0, -0.45, this.tc.barB);
         break; }
-      case 7: { // Par 4 – S-gates + slopes + hills
+      case 7: { // Par 4 – 지그재그 (two massive S-gates + side ramps)
         const {W,D,hp} = this.enc(7); void W; void D; void hp;
-        this.addObs(-2,  6, 6, 1.2, 0.8, this.tc.obs);
-        this.addObs( 2, -2, 6, 1.2, 0.8, this.tc.obs);
-        this.addHill( 3,  9, 1.5, 0.30);
-        this.addHill(-3, -5, 1.5, 0.30);
-        this.addSlopeZone(0,-6.5,5,-4, 0.9,0); this.addSlopeVisual(0,-6.5,5,-4,1,0,0x8aaa6a);
-        this.addSlopeZone(-5,-10,0,-8,-0.9,0); this.addSlopeVisual(-5,-10,0,-8,-1,0,0x7aaa7a);
+        this.addObs(-2.0,  5.0, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addObs( 2.0, -1.5, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addBumpRamp( 2.0, 8.5, 2.0, 2.0, 0.35);
+        this.addBumpRamp(-2.0, 1.0, 2.0, 2.0, 0.32);
         break; }
-      case 8: { // Par 3 – rotating bar + ramp + bumpers
+      case 8: { // Par 3 – 최후의 관문 (steep ramp + bar + bumpers at cup)
         const {W,D,hp} = this.enc(8); void W; void D; void hp;
-        this.addBumpRamp(0, 4.5, 2.5, 1.8, 0.55);
-        this.addRotatingBar(0, 1.5, 6.5, 1.1, this.tc.barA);
-        this.addBouncyCylinder(-2.5, -4, 0.5, 1.0);
-        this.addBouncyCylinder( 2.5, -4, 0.5, 1.0);
-        this.addHill(0, 6, 1.6, 0.36);
+        this.addRamp(0, 6.5, 2.5, 0, 0.85, 3.5);
+        this.addRamp(0, 2.5,-1.5, 0.85, 0, 3.5);
+        this.addRotatingBar(0, -2.5, 7.5, 0.85, this.tc.barA);
+        this.addBouncyCylinder(-2.0, -5.5, 0.55, 1.1);
+        this.addBouncyCylinder( 2.0, -5.5, 0.55, 1.1);
         break; }
     }
   }
@@ -171,56 +175,59 @@ export class Course {
 
   private _winter(i: number): void {
     switch (i) {
-      case 0: { // Par 2 – straight ice + centre bump
+      case 0: { // Par 2 – 블랙 아이스 (wide open, central bump – trust the slide)
         const {W,D,hp} = this.enc(0); void W; void D; void hp;
-        this.addBumpRamp(0, 1.5, 2.5, 1.0, 0.60);
+        this.addBumpRamp(0, 0.0, 2.2, 2.5, 0.38);
         break; }
-      case 1: { // Par 3 – left ice wall block + ramp right
+      case 1: { // Par 3 – 얼음 게이트 (S-gates + bumper near cup)
         const {W,D,hp} = this.enc(1); void W; void D; void hp;
-        this.addObs(-2, 1, 4, 1.2, 0.8, this.tc.obs);
-        this.addBumpRamp(1.5, 4.5, 2.5, 1.2, 0.50);
+        this.addObs(-2.0,  2.5, 3.5, 1.4, 0.9, this.tc.obs);
+        this.addObs( 2.0, -1.5, 3.5, 1.4, 0.9, this.tc.obs);
+        this.addBouncyCylinder(0.0, -4.5, 0.55, 1.1);
         break; }
-      case 2: { // Par 2 – narrow + icy hill + small ramp
+      case 2: { // Par 2 – 빙판 골목 (narrow + off-centre hill – precision required)
         const {W,D,hp} = this.enc(2); void W; void D; void hp;
-        this.addHill(0.4, -0.5, 1.2, 0.30);
-        this.addBumpRamp(0, 2.5, 1.5, 0.8, 0.40);
+        this.addHill(0.8, -0.5, 1.1, 0.48);
         break; }
-      case 3: { // Par 3 – two staggered ramps L/R
+      case 3: { // Par 3 – 빙하 계단 (two staggered bumps left/right)
         const {W,D,hp} = this.enc(3); void W; void D; void hp;
-        this.addBumpRamp(-1.5, 5.0, 2.0, 1.2, 0.50);
-        this.addBumpRamp( 1.5, 1.0, 2.0, 1.2, 0.50);
+        this.addBumpRamp(-2.0, 5.0, 2.5, 2.5, 0.55);
+        this.addBumpRamp( 2.0, 0.0, 2.5, 2.5, 0.52);
         break; }
-      case 4: { // Par 4 – rotating bar + bump ramp
+      case 4: { // Par 4 – 설원 풍차 (ramp + two counter-rotating bars on ice)
         const {W,D,hp} = this.enc(4); void W; void D; void hp;
-        this.addBumpRamp(0, 4.5, 2.5, 1.3, 0.55);
-        this.addRotatingBar(0, 0, 7.0, 0.55, this.tc.barA);
+        this.addBumpRamp(0, 7.0, 2.5, 4.0, 0.52);
+        this.addRotatingBar(0,  2.0, 8.5,  0.68, this.tc.barA);
+        this.addRotatingBar(0, -3.5, 8.5, -0.48, this.tc.barB);
         break; }
-      case 5: { // Par 3 – three ice bumpers
+      case 5: { // Par 3 – 얼음 삼각대 (ramp launch into bumper triangle)
         const {W,D,hp} = this.enc(5); void W; void D; void hp;
-        this.addBouncyCylinder( 0,  3, 0.55, 1.1);
-        this.addBouncyCylinder(-2, -1, 0.55, 1.1);
-        this.addBouncyCylinder( 2, -1, 0.55, 1.1);
+        this.addBumpRamp(0, 6.0, 2.0, 3.5, 0.40);
+        this.addBouncyCylinder( 0.0,  2.0, 0.60, 1.2);
+        this.addBouncyCylinder(-2.2, -2.5, 0.60, 1.2);
+        this.addBouncyCylinder( 2.2, -2.5, 0.60, 1.2);
         break; }
-      case 6: { // Par 4 – two rotating bars + ramp between
+      case 6: { // Par 4 – 이중 빙판 풍차 (two ramps + two bars, frantic on ice)
         const {W,D,hp} = this.enc(6); void W; void D; void hp;
-        this.addBumpRamp(0, 8.0, 2.5, 1.4, 0.50);
-        this.addRotatingBar(0,  3.5, 8.0,  0.55, this.tc.barA);
-        this.addBumpRamp(0, 0.0, 2.5, 1.4, 0.45);
-        this.addRotatingBar(0, -4.0, 8.0, -0.40, this.tc.barB);
+        this.addBumpRamp(0, 7.5, 3.0, 4.5, 0.55);
+        this.addRotatingBar(0,  3.0, 9.0,  0.62, this.tc.barA);
+        this.addBumpRamp(0, 0.0, 2.5, 4.5, 0.48);
+        this.addRotatingBar(0, -5.0, 9.0, -0.45, this.tc.barB);
         break; }
-      case 7: { // Par 4 – S-gates + two ramps
+      case 7: { // Par 4 – 얼음 슬라롬 (massive S-gates + side ramps)
         const {W,D,hp} = this.enc(7); void W; void D; void hp;
-        this.addObs(-2,  6, 6, 1.2, 0.8, this.tc.obs);
-        this.addObs( 2, -2, 6, 1.2, 0.8, this.tc.obs);
-        this.addBumpRamp( 1.5, 8.5, 2.0, 1.2, 0.50);
-        this.addBumpRamp(-1.5,-0.5, 2.0, 1.2, 0.48);
+        this.addObs(-2.0,  5.0, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addObs( 2.0, -1.5, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addBumpRamp( 2.0, 8.5, 2.5, 2.5, 0.50);
+        this.addBumpRamp(-2.0, 0.0, 2.5, 2.5, 0.48);
         break; }
-      case 8: { // Par 3 – steep ramp + two ice bumpers
+      case 8: { // Par 3 – 얼음 미끄럼틀 (steep slide + bar + bumpers)
         const {W,D,hp} = this.enc(8); void W; void D; void hp;
-        this.addRamp(0, 6.0, 1.0, 0, 0.90, 3.5);
-        this.addRamp(0, 1.0,-2.0, 0.90, 0, 3.5);
-        this.addBouncyCylinder(-2.5, -4, 0.5, 1.0);
-        this.addBouncyCylinder( 2.5, -4, 0.5, 1.0);
+        this.addRamp(0, 7.0, 2.0, 0, 1.0, 3.5);
+        this.addRamp(0, 2.0,-2.5, 1.0, 0, 3.5);
+        this.addRotatingBar(0, -3.5, 7.5, 0.80, this.tc.barA);
+        this.addBouncyCylinder(-2.0, -5.5, 0.55, 1.1);
+        this.addBouncyCylinder( 2.0, -5.5, 0.55, 1.1);
         break; }
     }
   }
@@ -229,56 +236,66 @@ export class Course {
 
   private _summer(i: number): void {
     switch (i) {
-      case 0: { // Par 2 – beach straight + small dune
+      case 0: { // Par 2 – 해변 오프닝 (decorative dune + small bump near cup)
         const {W,D,hp} = this.enc(0); void W; void D; void hp;
-        this.addBumpRamp(0, 1.5, 2.0, 1.0, 0.45);
+        this.addHill(0, 4.0, 1.5, 0.28);
+        this.addBumpRamp(0, 0.5, 2.0, 2.5, 0.40);
         break; }
-      case 1: { // Par 3 – palm trunk obstacle + dune ramp
+      case 1: { // Par 3 – 야자나무 게이트 (S-gates + dune ramp entry)
         const {W,D,hp} = this.enc(1); void W; void D; void hp;
-        this.addObs(1.5, 2, 4, 1.4, 0.9, this.tc.obs);
-        this.addBumpRamp(-1.5, 5.0, 2.2, 1.2, 0.55);
+        this.addObs( 2.0,  3.5, 2.5, 1.6, 0.9, this.tc.obs);
+        this.addObs(-2.0, -1.0, 2.5, 1.6, 0.9, this.tc.obs);
+        this.addBumpRamp(0, 6.5, 2.0, 3.0, 0.50);
         break; }
-      case 2: { // Par 2 – narrow + small dune hill
+      case 2: { // Par 2 – 모래 함정 (narrow + central dune + small ramp)
         const {W,D,hp} = this.enc(2); void W; void D; void hp;
-        this.addHill(0.4, -0.5, 1.2, 0.32);
+        this.addHill(0, -0.5, 1.2, 0.45);
+        this.addBumpRamp(0, 3.0, 1.5, 1.8, 0.30);
         break; }
-      case 3: { // Par 3 – two dune ramps alternating sides
+      case 3: { // Par 3 – 사구 달리기 (alternating offset dune ramps + hill at cup)
         const {W,D,hp} = this.enc(3); void W; void D; void hp;
-        this.addBumpRamp(-2.0, 5.0, 2.2, 1.2, 0.55);
-        this.addBumpRamp( 2.0, 1.0, 2.2, 1.2, 0.55);
+        this.addBumpRamp(-2.5, 5.5, 2.5, 2.5, 0.55);
+        this.addBumpRamp( 2.5, 0.5, 2.5, 2.5, 0.52);
+        this.addHill(0, -5.0, 1.6, 0.28);
         break; }
-      case 4: { // Par 4 – rotating bar + two dune ramps
+      case 4: { // Par 4 – 해변 풍차 (ramp + bar + side dune + hills at cup)
         const {W,D,hp} = this.enc(4); void W; void D; void hp;
-        this.addBumpRamp(-1.5, 6.0, 2.2, 1.2, 0.55);
-        this.addBumpRamp( 1.5, 1.5, 2.2, 1.2, 0.50);
-        this.addRotatingBar(0, -3.5, 7.0, 0.50, this.tc.barA);
+        this.addBumpRamp(0, 7.0, 2.5, 4.0, 0.50);
+        this.addRotatingBar(0, 2.0, 8.5, 0.58, this.tc.barA);
+        this.addBumpRamp(-2.0,-2.0, 2.5, 2.5, 0.45);
+        this.addHill( 3.0, -7.5, 1.5, 0.30);
+        this.addHill(-3.0, -7.5, 1.5, 0.30);
         break; }
-      case 5: { // Par 3 – three coral bumpers
+      case 5: { // Par 3 – 산호 핀볼 (entry hills + coral bumper triangle)
         const {W,D,hp} = this.enc(5); void W; void D; void hp;
-        this.addBouncyCylinder( 0,  3, 0.55, 1.1);
-        this.addBouncyCylinder(-2, -1, 0.55, 1.1);
-        this.addBouncyCylinder( 2, -1, 0.55, 1.1);
+        this.addHill( 3.5, 6.5, 1.6, 0.30);
+        this.addHill(-3.5, 6.5, 1.6, 0.30);
+        this.addBouncyCylinder( 0.0,  1.5, 0.65, 1.3);
+        this.addBouncyCylinder(-2.5, -2.5, 0.55, 1.1);
+        this.addBouncyCylinder( 2.5, -2.5, 0.55, 1.1);
         break; }
-      case 6: { // Par 4 – two rotating bars + two ramps
+      case 6: { // Par 4 – 여름 요새 (ramp + bar + side block + bar)
         const {W,D,hp} = this.enc(6); void W; void D; void hp;
-        this.addBumpRamp(0, 8.5, 2.5, 1.4, 0.55);
-        this.addRotatingBar(0,  4.0, 8.0,  0.45, this.tc.barA);
-        this.addBumpRamp(0, 0.5, 2.5, 1.4, 0.50);
-        this.addRotatingBar(0, -4.0, 8.0, -0.35, this.tc.barB);
+        this.addBumpRamp(0, 7.5, 3.0, 4.5, 0.52);
+        this.addRotatingBar(0,  3.0, 9.0,  0.55, this.tc.barA);
+        this.addObs( 3.0, -2.0, 3.5, 1.4, 0.9, this.tc.obs);
+        this.addRotatingBar(0, -5.0, 9.0, -0.40, this.tc.barB);
         break; }
-      case 7: { // Par 4 – S-gates + two dune ramps
+      case 7: { // Par 4 – 모래 슬라롬 (S-gate chicane + side ramps + hill at cup)
         const {W,D,hp} = this.enc(7); void W; void D; void hp;
-        this.addObs(-2,  6, 6, 1.2, 0.8, this.tc.obs);
-        this.addObs( 2, -2, 6, 1.2, 0.8, this.tc.obs);
-        this.addBumpRamp( 2.0, 8.5, 2.2, 1.2, 0.55);
-        this.addBumpRamp(-2.0,-0.5, 2.2, 1.2, 0.52);
+        this.addObs(-2.0,  5.0, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addObs( 2.0, -1.5, 5.0, 1.5, 1.0, this.tc.obs);
+        this.addBumpRamp( 2.5, 8.5, 2.5, 2.5, 0.50);
+        this.addBumpRamp(-2.5, 0.0, 2.5, 2.5, 0.48);
+        this.addHill(0, -7.5, 1.8, 0.32);
         break; }
-      case 8: { // Par 3 – steep dune ramp + two coral bumpers
+      case 8: { // Par 3 – 최후의 사구 (steep dune ramp + bar + bumpers)
         const {W,D,hp} = this.enc(8); void W; void D; void hp;
-        this.addRamp(0, 6.0, 1.5, 0, 0.80, 3.5);
-        this.addRamp(0, 1.5,-1.5, 0.80, 0, 3.5);
-        this.addBouncyCylinder(-2.5, -4, 0.5, 1.0);
-        this.addBouncyCylinder( 2.5, -4, 0.5, 1.0);
+        this.addRamp(0, 7.0, 2.5, 0, 0.80, 3.5);
+        this.addRamp(0, 2.5,-2.0, 0.80, 0, 3.5);
+        this.addRotatingBar(0, -3.5, 7.5, 0.72, this.tc.barA);
+        this.addBouncyCylinder(-2.0, -5.5, 0.55, 1.1);
+        this.addBouncyCylinder( 2.0, -5.5, 0.55, 1.1);
         break; }
     }
   }
@@ -422,6 +439,8 @@ export class Course {
     );
     stripe.position.set(cx, height/2, cz);
     this.scene.add(stripe); this.objects.push(stripe);
+
+    this.bumperEntries.push({ body, mesh, timer: 0, active: false });
   }
 
   private addHill(cx: number, cz: number, radius: number, height: number, color?: number): void {
@@ -535,12 +554,6 @@ export class Course {
     );
     rim.rotation.x = -Math.PI/2; rim.position.set(pos.x, 0.012, pos.z); this.flagGroup.add(rim);
 
-    const bot = new THREE.Mesh(
-      new THREE.CircleGeometry(cupR*0.9, 24),
-      new THREE.MeshStandardMaterial({ color: 0x040404 }),
-    );
-    bot.rotation.x = -Math.PI/2; bot.position.set(pos.x, -cupD+0.01, pos.z); this.flagGroup.add(bot);
-
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.03, 0.03, 2.4, 8),
       new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.7, roughness: 0.3 }),
@@ -582,6 +595,27 @@ export class Course {
       this.flagAnimAngle += _delta * 2.2;
       this.flagMesh.rotation.y = Math.sin(this.flagAnimAngle) * 0.13;
     }
+    // Bumper squish animation ("띠용")
+    for (const b of this.bumperEntries) {
+      if (!b.active) continue;
+      b.timer += _delta;
+      if (b.timer > 0.65) {
+        b.active = false; b.timer = 0;
+        b.mesh.scale.set(1, 1, 1);
+      } else {
+        // Decaying oscillation: fast squish outward then spring back
+        const s = Math.exp(-b.timer * 9) * Math.sin(b.timer * 22) * 0.50;
+        b.mesh.scale.set(1 + s, 1 - s * 0.75, 1 + s);
+      }
+    }
+  }
+
+  /** Register ball collision listener to trigger bumper bounce animations. */
+  registerBallCollision(ballBody: CANNON.Body): void {
+    ballBody.addEventListener('collide', (e: { body: CANNON.Body }) => {
+      const entry = this.bumperEntries.find(b => b.body === e.body);
+      if (entry) { entry.active = true; entry.timer = 0; }
+    });
   }
 
   applySlopes(ballBody: CANNON.Body): void {
@@ -612,6 +646,7 @@ export class Course {
     for (const o of this.objects) this.scene.remove(o);
     for (const b of this.bodies) this.world.removeBody(b);
     this.objects = []; this.bodies = []; this.slopeZones = []; this.rotatingBodies = [];
+    this.bumperEntries = [];
     this.flagGroup.clear(); this.flagMesh = null; this.flagAnimAngle = 0;
   }
 }

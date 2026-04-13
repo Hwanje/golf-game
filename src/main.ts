@@ -73,7 +73,7 @@ const bouncyMat = new CANNON.Material('bouncy');
 let ballGroundCM = new CANNON.ContactMaterial(ballMat, groundMat, { friction: 0.55, restitution: 0.25 });
 world.addContactMaterial(ballGroundCM);
 world.addContactMaterial(new CANNON.ContactMaterial(ballMat, wallMat,   { friction: 0.2,  restitution: 0.60 }));
-world.addContactMaterial(new CANNON.ContactMaterial(ballMat, bouncyMat, { friction: 0.08, restitution: 0.88 }));
+world.addContactMaterial(new CANNON.ContactMaterial(ballMat, bouncyMat, { friction: 0.08, restitution: 1.45 }));
 
 function applyThemePhysics(theme: string): void {
   const idx = (world.contactmaterials as CANNON.ContactMaterial[]).indexOf(ballGroundCM);
@@ -196,11 +196,14 @@ mainMenu.onMultiHost = async () => {
   mpManager = new MultiplayerManager();
 
   mpManager.onConnected = () => {
-    mainMenu.showMultiHostStatus('연결됨! 게임 시작 중...');
-    setTimeout(() => {
-      mainMenu.hide();
-      mpStartGame(0);
-    }, 1000);
+    mainMenu.showMultiHostStatus('연결됨! 맵 추첨 중...');
+    mainMenu.hide();
+    showRoulette((theme, holeIndex) => {
+      selectedTheme = theme;
+      applyThemePhysics(theme);
+      applyThemeScene(theme);
+      mpStartGame(holeIndex, theme);
+    });
   };
   mpManager.onMessage = handleMpMsg;
   mpManager.onDisconnected = () => {
@@ -284,9 +287,86 @@ document.getElementById('ingame-menu-btn')!.addEventListener('click', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Multiplayer roulette
+// ─────────────────────────────────────────────────────────────────────────────
+const THEMES      = ['forest', 'winter', 'summer'] as const;
+const THEME_ICONS: Record<string, string> = { forest: '🌲 숲', winter: '❄️ 겨울', summer: '☀️ 여름' };
+
+function _rouletteSettle(theme: string, holeIndex: number, cb: () => void): void {
+  const titleEl  = document.getElementById('rl-title')!;
+  const themeVal = document.getElementById('rl-theme-val')!;
+  const holeVal  = document.getElementById('rl-hole-val')!;
+  const resultEl = document.getElementById('rl-result')!;
+  const slotT    = document.getElementById('rl-slot-theme')!;
+  const slotH    = document.getElementById('rl-slot-hole')!;
+
+  themeVal.textContent = THEME_ICONS[theme];
+  holeVal.textContent  = String(holeIndex + 1);
+  titleEl.textContent  = '결정!';
+  slotT.classList.add('settled');
+  slotH.classList.add('settled');
+  setTimeout(() => { resultEl.classList.add('show'); }, 200);
+
+  setTimeout(() => {
+    const overlay = document.getElementById('mp-roulette')!;
+    overlay.style.display = 'none';
+    resultEl.classList.remove('show');
+    slotT.classList.remove('settled');
+    slotH.classList.remove('settled');
+    cb();
+  }, 1800);
+}
+
+/** Host: spin roulette, pick random theme+hole, then call cb */
+function showRoulette(cb: (theme: string, holeIndex: number) => void): void {
+  const overlay  = document.getElementById('mp-roulette')!;
+  const titleEl  = document.getElementById('rl-title')!;
+  const themeVal = document.getElementById('rl-theme-val')!;
+  const holeVal  = document.getElementById('rl-hole-val')!;
+
+  const finalTheme = THEMES[Math.floor(Math.random() * THEMES.length)];
+  const finalHole  = Math.floor(Math.random() * 9);   // 0-indexed
+
+  overlay.style.display = 'flex';
+  titleEl.textContent = '맵 추첨 중...';
+
+  let tick = 0;
+  const TOTAL = 28;
+
+  function spin(): void {
+    tick++;
+    themeVal.textContent = THEME_ICONS[THEMES[Math.floor(Math.random() * THEMES.length)]];
+    holeVal.textContent  = String(Math.floor(Math.random() * 9) + 1);
+
+    if (tick < TOTAL) {
+      const delay = 60 + (tick > 18 ? (tick - 18) * 35 : 0);
+      setTimeout(spin, delay);
+    } else {
+      _rouletteSettle(finalTheme, finalHole, () => cb(finalTheme, finalHole));
+    }
+  }
+  spin();
+}
+
+/** Guest: skip spin, just show the result the host picked */
+function showRouletteResult(theme: string, holeIndex: number, cb: () => void): void {
+  const overlay  = document.getElementById('mp-roulette')!;
+  const titleEl  = document.getElementById('rl-title')!;
+  const themeVal = document.getElementById('rl-theme-val')!;
+  const holeVal  = document.getElementById('rl-hole-val')!;
+
+  overlay.style.display = 'flex';
+  titleEl.textContent = '맵 결정됨!';
+  themeVal.textContent = THEME_ICONS[theme] ?? theme;
+  holeVal.textContent  = String(holeIndex + 1);
+
+  _rouletteSettle(theme, holeIndex, cb);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Multiplayer game start / message handler
 // ─────────────────────────────────────────────────────────────────────────────
-function mpStartGame(holeIndex: number): void {
+function mpStartGame(holeIndex: number, theme: string): void {
   mpMode = true;
   mpMyTurn = mpManager!.isHost;   // host always shoots first
   mpMyDone = false;
@@ -312,9 +392,9 @@ function mpStartGame(holeIndex: number): void {
   initHole(holeIndex);
   gameState = GameState.WAITING;
 
-  // Host tells guest to start
+  // Host tells guest to start (includes theme so guest uses same map)
   if (mpManager!.isHost) {
-    mpManager!.send({ type: 'game_start', holeIndex });
+    mpManager!.send({ type: 'game_start', holeIndex, theme });
   }
   updateMpHud();
 }
@@ -323,9 +403,14 @@ function handleMpMsg(msg: MultiMsg): void {
   switch (msg.type) {
     case 'game_start':
       mainMenu.hide();
-      mpStartGame(msg.holeIndex);
-      mpMyTurn = false;   // guest: wait for host to shoot first
-      updateMpHud();
+      selectedTheme = msg.theme;
+      applyThemePhysics(msg.theme);
+      applyThemeScene(msg.theme);
+      showRouletteResult(msg.theme, msg.holeIndex, () => {
+        mpStartGame(msg.holeIndex, msg.theme);
+        mpMyTurn = false;   // guest: wait for host to shoot first
+        updateMpHud();
+      });
       break;
 
     case 'shot':
@@ -360,6 +445,11 @@ function handleMpMsg(msg: MultiMsg): void {
         if (mpManager!.isHost) {
           setTimeout(() => mpAdvanceHole(), 1500);
         }
+      } else {
+        // Opponent holed in before us — grant our turn so we can finish
+        mpMyTurn = true;
+        if (inputManager) inputManager.canShoot = true;
+        if (gameState !== GameState.SHOOTING) gameState = GameState.WAITING;
       }
       updateMpHud();
       break;
@@ -427,6 +517,7 @@ function initHole(index: number): void {
 
   if (ball) ball.dispose();
   ball = new Ball(scene, world, holeData.startPosition, ballMat);
+  course.registerBallCollision(ball.body);
 
   if (inputManager) inputManager.destroy();
   inputManager = new InputManager(renderer.domElement, camera);
@@ -704,9 +795,14 @@ function gameLoop(): void {
       if (ball.isAtRest()) {
         ball.saveRestPosition();
         if (mpMode) {
-          mpMyTurn = false;
-          mpManager!.send({ type: 'turn_end', strokes: scoreCard.getCurrentStrokes() });
-          inputManager.canShoot = false;
+          if (mpOpponentDone) {
+            // Opponent already holed — keep our turn, no swap needed
+            inputManager.canShoot = true;
+          } else {
+            mpMyTurn = false;
+            mpManager!.send({ type: 'turn_end', strokes: scoreCard.getCurrentStrokes() });
+            inputManager.canShoot = false;
+          }
           updateMpHud();
         } else {
           inputManager.canShoot = true;

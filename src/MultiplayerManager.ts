@@ -1,7 +1,7 @@
 import Peer, { DataConnection } from 'peerjs';
 
 export type MultiMsg =
-  | { type: 'game_start'; holeIndex: number }
+  | { type: 'game_start'; holeIndex: number; theme: string }
   | { type: 'shot'; dx: number; dz: number; power: number }
   | { type: 'ball_pos'; x: number; y: number; z: number }
   | { type: 'turn_end'; strokes: number }
@@ -70,10 +70,21 @@ export class MultiplayerManager {
 
   private _setupConn(): void {
     if (!this.conn) return;
-    this.conn.on('open', () => {
+
+    const handleOpen = () => {
       this.onConnected?.();
       this._startHeartbeat();
-    });
+    };
+
+    // For the host, peer.on('connection') can fire after the 'open' event
+    // has already fired on the DataConnection, so we must check conn.open
+    // immediately rather than relying on the 'open' listener alone.
+    if (this.conn.open) {
+      handleOpen();
+    } else {
+      this.conn.on('open', handleOpen);
+    }
+
     this.conn.on('data', (raw) => {
       if (raw === '♥') return;
       try {

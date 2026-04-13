@@ -68,7 +68,7 @@ export class Ball {
   shoot(direction: THREE.Vector3, power: number): void {
     this.body.wakeUp();
     this.restTimer = 0;
-    const speed = power * 14;
+    const speed = power * 22;
     this.body.velocity.set(direction.x * speed, 0.28, direction.z * speed);
     this.body.angularVelocity.set(0, 0, 0);
     this.strokeCount++;
